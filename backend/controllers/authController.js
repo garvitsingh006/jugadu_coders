@@ -145,15 +145,26 @@ exports.login = async (req, res) => {
 // Get current user
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.userId)
+    let user = await User.findById(req.userId)
       .select('-password')
-      .populate('joinedCommunities', 'name tags');
+      .populate({
+        path: 'joinedCommunities',
+        select: 'name tags membersCount visibility createdBy',
+        populate: { path: 'createdBy', select: 'name' }
+      });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({ user });
+    // Convert to plain object so we can add isAdmin flag per community
+    const userObj = user.toObject();
+    userObj.joinedCommunities = (userObj.joinedCommunities || []).map((c) => ({
+      ...c,
+      isAdmin: c.createdBy && String(c.createdBy._id) === String(userObj._id)
+    }));
+
+    res.json({ user: userObj });
   } catch (error) {
     console.error('GetMe error:', error);
     res.status(500).json({ error: 'Failed to get user' });
