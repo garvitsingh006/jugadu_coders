@@ -72,7 +72,7 @@ export default function CommunityPage() {
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <div className="text-xl text-gray-600">Loading...</div>
+        <div className="text-xl text-gray-300">Loading...</div>
       </div>
     );
   }
@@ -80,7 +80,7 @@ export default function CommunityPage() {
   if (!community) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-2xl font-bold text-gray-900">Community not found</h2>
+        <h2 className="text-2xl font-bold text-white">Community not found</h2>
       </div>
     );
   }
@@ -93,17 +93,17 @@ export default function CommunityPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Toast toast={toast} onClose={handleCloseToast} />
-      <div className="bg-white rounded-lg shadow-md p-8 mb-8">
+      <div className="card mb-8">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            <h1 className="text-3xl font-bold text-white mb-2">
               {community.name}
             </h1>
             <div className="flex flex-wrap gap-2 mb-4">
               {community.tags.map((tag, index) => (
                 <span
                   key={index}
-                  className="bg-indigo-100 text-indigo-700 text-sm px-3 py-1 rounded-full"
+                  className="bg-primary-500/20 text-primary-400 text-sm px-3 py-1 rounded-full border border-primary-500/30"
                 >
                   #{tag}
                 </span>
@@ -113,23 +113,23 @@ export default function CommunityPage() {
           {joined ? (
             <button
               onClick={handleLeave}
-              className="bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600"
+              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors"
             >
               Leave Community
             </button>
           ) : (
             <button
               onClick={handleJoin}
-              className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700"
+              className="btn-primary"
             >
               Join Community
             </button>
           )}
         </div>
 
-        <p className="text-gray-700 mb-6">{community.description}</p>
+        <p className="text-gray-300 mb-6">{community.description}</p>
 
-        <div className="flex items-center space-x-6 text-sm text-gray-600">
+        <div className="flex items-center space-x-6 text-sm text-gray-400">
           <span>{community.membersCount} members</span>
           <span className="capitalize">{community.visibility} community</span>
           {community.campus && <span>{community.campus}</span>}
@@ -137,10 +137,10 @@ export default function CommunityPage() {
       </div>
 
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Active Pods</h2>
+        <h2 className="text-2xl font-bold text-white">Active Pods</h2>
         <Link
           to={`/create-pod/${id}`}
-          className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700"
+          className="btn-primary"
         >
           Create Pod
         </Link>
@@ -153,8 +153,8 @@ export default function CommunityPage() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <p className="text-gray-600">No active pods. Be the first to create one!</p>
+        <div className="text-center py-12 card">
+          <p className="text-gray-300">No active pods. Be the first to create one!</p>
         </div>
       )}
     </div>

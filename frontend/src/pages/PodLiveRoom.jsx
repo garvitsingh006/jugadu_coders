@@ -66,7 +66,7 @@ export default function PodLiveRoom() {
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <div className="text-xl text-gray-600">Loading...</div>
+        <div className="text-xl text-gray-300">Loading...</div>
       </div>
     );
   }
@@ -74,10 +74,10 @@ export default function PodLiveRoom() {
   if (!pod || !pod.active) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-2xl font-bold text-gray-900">Pod not available</h2>
+        <h2 className="text-2xl font-bold text-white">Pod not available</h2>
         <button
           onClick={() => navigate(-1)}
-          className="mt-4 text-indigo-600 hover:text-indigo-500"
+          className="mt-4 text-green-400 hover:text-green-300"
         >
           Go back
         </button>
@@ -91,12 +91,12 @@ export default function PodLiveRoom() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3">
-          <div className="bg-white rounded-lg shadow-md h-[600px] flex flex-col">
-            <div className="bg-indigo-600 text-white px-6 py-4 rounded-t-lg">
+          <div className="card h-[600px] flex flex-col">
+            <div className="bg-green-600 text-white px-6 py-4 rounded-t-lg">
               <h2 className="text-xl font-semibold">
                 {pod.title || `${pod.type} Pod`}
               </h2>
-              <p className="text-sm text-indigo-100">
+              <p className="text-sm text-green-100">
                 Expires {timeLeft}
               </p>
             </div>
@@ -109,29 +109,29 @@ export default function PodLiveRoom() {
         </div>
 
         <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="card p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">
               Members ({pod.members.length})
             </h3>
             <div className="space-y-3">
               {pod.members.map((member) => (
                 <div key={member._id} className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                    <span className="text-indigo-600 font-semibold">
+                  <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center border border-green-500/30">
+                    <span className="text-green-400 font-semibold">
                       {member.name.charAt(0)}
                     </span>
                   </div>
-                  <span className="text-gray-700">{member.name}</span>
+                  <span className="text-gray-300">{member.name}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-6 mt-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="card p-6 mt-4">
+            <h3 className="text-lg font-semibold text-white mb-4">
               Pod Info
             </h3>
-            <div className="space-y-2 text-sm text-gray-600">
+            <div className="space-y-2 text-sm text-gray-300">
               <p><strong>Type:</strong> {pod.type}</p>
               <p><strong>Created:</strong> {formatDistanceToNow(new Date(pod.createdAt), { addSuffix: true })}</p>
               <p><strong>Community:</strong> {pod.communityId?.name}</p>
