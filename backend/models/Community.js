@@ -43,6 +43,10 @@ const communitySchema = new mongoose.Schema({
     type: [Number],
     default: []
   },
+  adminIp: {
+    type: String,
+    default: null
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

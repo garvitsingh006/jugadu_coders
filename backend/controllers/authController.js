@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const { getLocationFromIP } = require('../services/geoService');
 
 // Generate JWT Token
 const generateToken = (userId) => {
@@ -26,6 +27,31 @@ exports.register = async (req, res) => {
       password,
       campus
     });
+
+    // Capture IP and try to save approximate location
+    try {
+      const ip = req.headers['x-forwarded-for']?.split(',')[0] || 
+                  req.connection.remoteAddress ||
+                  req.socket.remoteAddress ||
+                  null;
+      if (ip) {
+        // Save lastIp for later backfills
+        user.lastIp = ip;
+
+        const geo = await getLocationFromIP(ip);
+        if (geo && geo.lat !== undefined && geo.lng !== undefined) {
+          user.location = {
+            type: 'Point',
+            coordinates: [geo.lng, geo.lat]
+          };
+        }
+
+        await user.save();
+      }
+    } catch (err) {
+      // non-fatal: just log
+      console.error('Failed to set user location from IP:', err.message || err);
+    }
 
     // Generate token
     const token = generateToken(user._id);
@@ -71,6 +97,27 @@ exports.login = async (req, res) => {
 
     // Generate token
     const token = generateToken(user._id);
+
+    // Update user's lastIp and location from IP on login
+    try {
+      const ip = req.headers['x-forwarded-for']?.split(',')[0] || 
+                  req.connection.remoteAddress ||
+                  req.socket.remoteAddress ||
+                  null;
+      if (ip) {
+        const geo = await getLocationFromIP(ip);
+        const update = { lastIp: ip };
+        if (geo && geo.lat !== undefined && geo.lng !== undefined) {
+          update.location = {
+            type: 'Point',
+            coordinates: [geo.lng, geo.lat]
+          };
+        }
+        await User.findByIdAndUpdate(user._id, update);
+      }
+    } catch (err) {
+      console.error('Failed to update user location from IP:', err.message || err);
+    }
 
     // Set cookie
     res.cookie('token', token, {

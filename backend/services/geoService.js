@@ -1,28 +1,35 @@
+// geoService.js (CommonJS)
 const axios = require('axios');
 
 async function getLocationFromIP(ip) {
   try {
-    // Use ipapi.co for geolocation
-    const response = await axios.get(`https://ipapi.co/${ip}/json/`);
+    // ipwho.is doesn't rate limit localhost
+    const url = `https://ipwho.is/${ip}`;
+    const res = await axios.get(url);
+
+    if (!res.data || res.data.success === false) {
+      return {
+        city: 'Unknown',
+        lat: 28.6139,
+        lng: 77.2090
+      };
+    }
 
     return {
-      city: response.data.city,
-      country: response.data.country_name,
-      lat: response.data.latitude,
-      lng: response.data.longitude
+      city: res.data.city || 'Unknown',
+      lat: parseFloat(res.data.latitude || res.data.lat || 0),
+      lng: parseFloat(res.data.longitude || res.data.lon || res.data.lng || 0)
     };
-  } catch (error) {
-    console.error('Geolocation error:', error);
-    // Default location if API fails
+  } catch (err) {
+    console.log('Geo error fallback:', err.message || err);
+
+    // Fallback coords (Delhi)
     return {
       city: 'Unknown',
-      country: 'Unknown',
-      lat: 0,
-      lng: 0
+      lat: 28.6139,
+      lng: 77.2090
     };
   }
 }
 
-module.exports = {
-  getLocationFromIP
-};
+module.exports = { getLocationFromIP };

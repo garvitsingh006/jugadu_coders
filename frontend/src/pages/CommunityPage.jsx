@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api/api';
 import PodCard from '../components/PodCard';
+import Toast from '../components/Toast';
 
 export default function CommunityPage() {
   const { id } = useParams();
@@ -9,6 +10,7 @@ export default function CommunityPage() {
   const [pods, setPods] = useState([]);
   const [loading, setLoading] = useState(true);
   const [joined, setJoined] = useState(false);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     fetchCommunity();
@@ -19,6 +21,7 @@ export default function CommunityPage() {
     try {
       const response = await api.get(`/community/${id}`);
       setCommunity(response.data.community);
+      setJoined(!!response.data.isMember);
     } catch (error) {
       console.error('Fetch community error:', error);
     } finally {
@@ -37,11 +40,32 @@ export default function CommunityPage() {
 
   const handleJoin = async () => {
     try {
-      await api.post(`/community/${id}/join`);
-      setJoined(true);
+      const response = await api.post(`/community/${id}/join`);
+      // If user was already joined, backend returns alreadyJoined: true
+      const alreadyJoined = response.data?.alreadyJoined;
+      setJoined(!alreadyJoined);
       fetchCommunity();
+      setToast({ id: Date.now(), message: alreadyJoined ? 'You are already a member' : 'Joined community', type: 'success' });
     } catch (error) {
       console.error('Join error:', error);
+      setToast({ id: Date.now(), message: 'Failed to join community', type: 'error' });
+    }
+  };
+
+  const handleLeave = async () => {
+    // Ask for confirmation before leaving
+    const ok = window.confirm('Are you sure you want to leave this community?');
+    if (!ok) return;
+
+    try {
+      const response = await api.post(`/community/${id}/leave`);
+      const alreadyLeft = response.data?.alreadyLeft;
+      setJoined(!alreadyLeft);
+      fetchCommunity();
+      setToast({ id: Date.now(), message: alreadyLeft ? 'You are not a member' : 'Left community', type: 'success' });
+    } catch (error) {
+      console.error('Leave error:', error);
+      setToast({ id: Date.now(), message: 'Failed to leave community', type: 'error' });
     }
   };
 
@@ -61,8 +85,14 @@ export default function CommunityPage() {
     );
   }
 
+  const handleCloseToast = (id) => {
+    if (!toast) return;
+    if (toast.id === id) setToast(null);
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <Toast toast={toast} onClose={handleCloseToast} />
       <div className="bg-white rounded-lg shadow-md p-8 mb-8">
         <div className="flex justify-between items-start mb-6">
           <div>
@@ -80,13 +110,21 @@ export default function CommunityPage() {
               ))}
             </div>
           </div>
-          <button
-            onClick={handleJoin}
-            disabled={joined}
-            className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {joined ? 'Joined' : 'Join Community'}
-          </button>
+          {joined ? (
+            <button
+              onClick={handleLeave}
+              className="bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600"
+            >
+              Leave Community
+            </button>
+          ) : (
+            <button
+              onClick={handleJoin}
+              className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700"
+            >
+              Join Community
+            </button>
+          )}
         </div>
 
         <p className="text-gray-700 mb-6">{community.description}</p>
@@ -122,3 +160,5 @@ export default function CommunityPage() {
     </div>
   );
 }
+
+// (No extra wrapper) 
