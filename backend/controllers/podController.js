@@ -7,17 +7,20 @@ exports.createPod = async (req, res) => {
     const { communityId, type, title, duration, location } = req.body;
     const userId = req.userId;
 
-    const expiresAt = new Date(Date.now() + (duration || 60) * 60 * 1000);
+    const podDuration = duration || 1; // Default 1 hour
+    const expiresAt = new Date(Date.now() + podDuration * 60 * 60 * 1000);
 
     const pod = await Pod.create({
       communityId,
       createdBy: userId,
       type,
       title,
+      duration: podDuration,
       expiresAt,
       members: [userId],
       location,
-      active: true
+      active: true,
+      lastActivity: new Date()
     });
 
     // Update community activity

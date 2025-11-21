@@ -43,7 +43,7 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 // Search communities with AI
-async function searchCommunities(query, mode = 'global', userLocation = null, userId) {
+async function searchCommunities(query, mode = 'global', userLocation = null, userId, aiKeywords = []) {
   try {
     let communities = [];
 
@@ -64,12 +64,24 @@ async function searchCommunities(query, mode = 'global', userLocation = null, us
       communities = await Community.find().limit(100);
     }
 
-    // Step 2: Keyword match
-    const keywordMatches = communities.filter(c => 
-      c.name.toLowerCase().includes(query.toLowerCase()) ||
-      c.tags.some(tag => tag.includes(query.toLowerCase())) ||
-      c.description.toLowerCase().includes(query.toLowerCase())
-    );
+    // Step 2: Enhanced keyword match with AI keywords
+    const allKeywords = [...query.toLowerCase().split(' '), ...aiKeywords];
+    const keywordMatches = communities.filter(c => {
+      const searchText = `${c.name} ${c.tags.join(' ')} ${c.description}`.toLowerCase();
+      return allKeywords.some(term => searchText.includes(term.toLowerCase()));
+    });
+    
+    // Filter communities that match at least 2 AI keywords for relevance
+    const relevantCommunities = communities.filter(c => {
+      const searchText = `${c.name} ${c.tags.join(' ')} ${c.description}`.toLowerCase();
+      const matchCount = aiKeywords.filter(keyword => 
+        searchText.includes(keyword.toLowerCase())
+      ).length;
+      return matchCount >= Math.min(2, aiKeywords.length);
+    });
+    
+    // Use relevant communities if we have good matches
+    const filteredCommunities = relevantCommunities.length > 0 ? relevantCommunities : communities;
 
     // Step 3: Fuzzy match
     const fuse = new Fuse(communities, {
@@ -87,8 +99,8 @@ async function searchCommunities(query, mode = 'global', userLocation = null, us
         : 0
     }));
 
-    // Step 5: Combine scores
-    const scoredCommunities = communities.map(community => {
+    // Step 5: Combine scores (use filtered communities)
+    const scoredCommunities = filteredCommunities.map(community => {
       const keywordScore = keywordMatches.includes(community) ? 1 : 0;
       const fuzzyScore = fuzzyMatches.find(m => m.item._id.equals(community._id)) ? 0.8 : 0;
       const semanticScore = semanticScores.find(s => s.community._id.equals(community._id))?.similarity || 0;
@@ -141,7 +153,7 @@ async function generateCommunityEmbedding(name, tags, description) {
 }
 
 // Generate community name using AI
-async function generateCommunityName(query, existingTags = []) {
+async function generateCommunityName(query, aiKeywords = []) {
   try {
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
@@ -150,11 +162,11 @@ async function generateCommunityName(query, existingTags = []) {
         messages: [
           {
             role: 'system',
-            content: 'You are a creative community name generator. Generate a catchy, relevant community name, 3-5 relevant tags, and a brief description based on user query.'
+            content: 'Generate a short, catchy community name (2-4 words max), 3-5 relevant tags, and a brief description. Keep the name concise and memorable.'
           },
           {
             role: 'user',
-            content: `Generate a community for: "${query}". Return JSON with: name, tags (array), description.`
+            content: `Create a community for: "${query}". Related keywords: ${aiKeywords.join(', ')}. Return JSON with: name (short), tags (array), description.`
           }
         ],
         temperature: 0.7
@@ -173,16 +185,22 @@ async function generateCommunityName(query, existingTags = []) {
       return JSON.parse(jsonMatch[0]);
     }
 
+    // Fallback with better naming
+    const fallbackName = aiKeywords.length > 0 ? 
+      aiKeywords.slice(0, 2).map(k => k.charAt(0).toUpperCase() + k.slice(1)).join(' ') + ' Hub' :
+      query.split(' ').slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    
     return {
-      name: query,
-      tags: existingTags,
-      description: `A community for ${query}`
+      name: fallbackName,
+      tags: aiKeywords.slice(0, 5),
+      description: `A community for ${query} enthusiasts`
     };
   } catch (error) {
     console.error('Generate community name error:', error);
+    const fallbackName = query.split(' ').slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     return {
-      name: query,
-      tags: existingTags,
+      name: fallbackName,
+      tags: aiKeywords.slice(0, 5),
       description: `A community for ${query}`
     };
   }

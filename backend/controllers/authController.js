@@ -1,6 +1,8 @@
 const User = require('../models/User');
+const OTP = require('../models/OTP');
 const jwt = require('jsonwebtoken');
 const { getLocationFromIP } = require('../services/geoService');
+const emailService = require('../services/emailService');
 
 // Generate JWT Token
 const generateToken = (userId) => {
@@ -9,8 +11,8 @@ const generateToken = (userId) => {
   });
 };
 
-// Register
-exports.register = async (req, res) => {
+// Send OTP for registration
+exports.sendOTP = async (req, res) => {
   try {
     const { name, email, password, campus } = req.body;
 
@@ -20,6 +22,42 @@ exports.register = async (req, res) => {
       return res.status(400).json({ error: 'Email already registered' });
     }
 
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Delete any existing OTP for this email
+    await OTP.deleteMany({ email });
+
+    // Save OTP and user data
+    await OTP.create({
+      email,
+      otp,
+      userData: { name, email, password, campus }
+    });
+
+    // Send OTP email
+    await emailService.sendOTP(email, otp, name);
+
+    res.json({ message: 'OTP sent successfully' });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    res.status(500).json({ error: 'Failed to send OTP' });
+  }
+};
+
+// Verify OTP and complete registration
+exports.verifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    // Find OTP record
+    const otpRecord = await OTP.findOne({ email, otp });
+    if (!otpRecord) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    const { name, password, campus } = otpRecord.userData;
+
     // Create user
     const user = await User.create({
       name,
@@ -28,16 +66,14 @@ exports.register = async (req, res) => {
       campus
     });
 
-    // Capture IP and try to save approximate location
+    // Set location from IP
     try {
       const ip = req.headers['x-forwarded-for']?.split(',')[0] || 
                   req.connection.remoteAddress ||
                   req.socket.remoteAddress ||
                   null;
       if (ip) {
-        // Save lastIp for later backfills
         user.lastIp = ip;
-
         const geo = await getLocationFromIP(ip);
         if (geo && geo.lat !== undefined && geo.lng !== undefined) {
           user.location = {
@@ -45,13 +81,14 @@ exports.register = async (req, res) => {
             coordinates: [geo.lng, geo.lat]
           };
         }
-
         await user.save();
       }
     } catch (err) {
-      // non-fatal: just log
       console.error('Failed to set user location from IP:', err.message || err);
     }
+
+    // Delete OTP record
+    await OTP.deleteOne({ _id: otpRecord._id });
 
     // Generate token
     const token = generateToken(user._id);
@@ -60,7 +97,7 @@ exports.register = async (req, res) => {
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
     res.status(201).json({
@@ -73,7 +110,7 @@ exports.register = async (req, res) => {
       token
     });
   } catch (error) {
-    console.error('Register error:', error);
+    console.error('Verify OTP error:', error);
     res.status(500).json({ error: 'Registration failed' });
   }
 };

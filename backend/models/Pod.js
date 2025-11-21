@@ -20,9 +20,19 @@ const podSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  duration: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 24
+  },
   expiresAt: {
     type: Date,
     required: true
+  },
+  lastActivity: {
+    type: Date,
+    default: Date.now
   },
   members: [{
     type: mongoose.Schema.Types.ObjectId,

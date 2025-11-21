@@ -1,17 +1,28 @@
 const Community = require('../models/Community');
 const User = require('../models/User');
 const { searchCommunities, generateCommunityEmbedding, generateCommunityName } = require('../services/aiService');
+const lyzrAiService = require('../services/lyzrAiService');
 const { getLocationFromIP } = require('../services/geoService');
 
-// Search communities
+// Search communities with AI enhancement
 exports.searchCommunities = async (req, res) => {
   try {
     const { query, mode, userLocation } = req.body;
     const userId = req.userId;
 
-    const results = await searchCommunities(query, mode, userLocation, userId);
+    // Generate AI keywords for enhanced search
+    const keywords = await lyzrAiService.generateKeywords(query, userId);
+    
+    // Use AI keywords to filter communities
+    const results = await searchCommunities(query, mode, userLocation, userId, keywords);
+    
+    // If no match found, regenerate suggestion with AI keywords
+    if (!results.found && results.suggestion) {
+      const { generateCommunityName } = require('../services/aiService');
+      results.suggestion = await generateCommunityName(query, keywords);
+    }
 
-    res.json(results);
+    res.json({ ...results, aiKeywords: keywords });
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ error: 'Search failed' });
@@ -141,11 +152,10 @@ exports.getNearbyByIP = async (req, res) => {
     const geo = await getLocationFromIP(ip);
     const lng = parseFloat(geo.lng || 0);
     const lat = parseFloat(geo.lat || 0);
-    const maxDistance = parseInt(req.query.maxDistance || 10000);
+    const maxDistance = parseInt(req.query.maxDistance || 50000); // 50km radius
 
-    // Find communities with valid locations near the requester
-    const communitiesNear = await Community.find({
-      'location.coordinates': { $ne: [0, 0] },
+    // Find nearby users first
+    const nearbyUsers = await User.find({
       location: {
         $near: {
           $geometry: {
@@ -155,18 +165,23 @@ exports.getNearbyByIP = async (req, res) => {
           $maxDistance: maxDistance
         }
       }
-    }).limit(20).populate('createdBy', 'name photo');
+    }).select('_id name photo campus location').limit(100);
 
-    // Find communities that don't have a useful location but have adminIp
+    const nearbyUserIds = nearbyUsers.map(user => user._id);
+
+    // Find communities created by nearby users
+    const communitiesByNearbyUsers = await Community.find({
+      createdBy: { $in: nearbyUserIds }
+    }).populate('createdBy', 'name photo location');
+
+    // Also find communities with adminIp in the same area
     const communitiesNoLoc = await Community.find({
-      $or: [
-        { 'location.coordinates': { $exists: false } },
-        { 'location.coordinates.0': 0, 'location.coordinates.1': 0 },
-      ],
-      adminIp: { $exists: true, $ne: null }
-    }).limit(200).populate('createdBy', 'name photo');
+      adminIp: { $exists: true, $ne: null },
+      createdBy: { $nin: nearbyUserIds } // Avoid duplicates
+    }).limit(100).populate('createdBy', 'name photo');
 
     const additionalCommunities = [];
+    
     // Helper: compute haversine distance in meters
     function haversineDistance(lat1, lon1, lat2, lon2) {
       function toRad(x) { return x * Math.PI / 180; }
@@ -180,50 +195,32 @@ exports.getNearbyByIP = async (req, res) => {
       return R * c;
     }
 
+    // Check communities by IP proximity
     for (const c of communitiesNoLoc) {
       try {
-        const ip = c.adminIp;
-        if (!ip) continue;
-        const cg = await getLocationFromIP(ip);
+        const adminIp = c.adminIp;
+        if (!adminIp) continue;
+        const cg = await getLocationFromIP(adminIp);
         if (!cg || cg.lat === undefined || cg.lng === undefined) continue;
-        const dist = haversineDistance(lat, lng, parseFloat(cg.latitude || cg.lat), parseFloat(cg.longitude || cg.lng) );
+        const dist = haversineDistance(lat, lng, parseFloat(cg.lat), parseFloat(cg.lng));
         if (dist <= maxDistance) {
-          // Backfill community location so it will be found faster next time
-          try {
-            await Community.findByIdAndUpdate(c._id, {
-              location: { type: 'Point', coordinates: [parseFloat(cg.longitude || cg.lng), parseFloat(cg.latitude || cg.lat)] }
-            });
-          } catch (err) {
-            console.error('Failed to backfill community location:', err.message || err);
-          }
-          additionalCommunities.push(Object.assign({}, c.toObject(), { location: { type: 'Point', coordinates: [parseFloat(cg.longitude || cg.lng), parseFloat(cg.latitude || cg.lat)] } }));
+          additionalCommunities.push(c);
         }
       } catch (err) {
-        // ignore per-community errors
         console.error('Error resolving adminIp for community', c._id, err.message || err);
       }
     }
 
-    // Combine lists, avoiding duplicates
-    const communities = communitiesNear.slice();
-    const existingIds = new Set(communities.map(cc => String(cc._id)));
-    for (const ac of additionalCommunities) {
-      if (!existingIds.has(String(ac._id))) communities.push(ac);
-    }
+    // Combine and sort by creation date
+    const allCommunities = [...communitiesByNearbyUsers, ...additionalCommunities]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    const users = await User.find({
-      location: {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: [lng, lat]
-          },
-          $maxDistance: maxDistance
-        }
-      }
-    }).select('name photo campus location').limit(20);
-
-    res.json({ ip, geo, communities, users });
+    res.json({ 
+      ip, 
+      geo, 
+      communities: allCommunities.slice(0, 20),
+      users: nearbyUsers.slice(0, 20)
+    });
   } catch (error) {
     console.error('Get nearby by IP error:', error);
     res.status(500).json({ error: 'Failed to get nearby results' });
@@ -250,6 +247,12 @@ exports.joinCommunity = async (req, res) => {
     const { id } = req.params;
     const userId = req.userId;
 
+    // Get user IP for location tracking
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || 
+                req.connection.remoteAddress ||
+                req.socket.remoteAddress ||
+                null;
+
     // Ensure community exists
     const communityDoc = await Community.findById(id);
     if (!communityDoc) {
@@ -257,18 +260,34 @@ exports.joinCommunity = async (req, res) => {
     }
 
     // Fetch user and check membership
-    const user = await User.findById(userId).select('joinedCommunities');
+    const user = await User.findById(userId).select('joinedCommunities location');
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Update user location if IP available and no location set
+    if (ip && (!user.location || !user.location.coordinates)) {
+      try {
+        const geo = await getLocationFromIP(ip);
+        if (geo && geo.lat && geo.lng) {
+          await User.findByIdAndUpdate(userId, {
+            location: {
+              type: 'Point',
+              coordinates: [parseFloat(geo.lng), parseFloat(geo.lat)]
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Failed to update user location:', err);
+      }
+    }
+
     const alreadyJoined = user.joinedCommunities.some(cid => cid.equals(id));
     if (alreadyJoined) {
-      // Return community without incrementing membersCount
       return res.json({ community: communityDoc, alreadyJoined: true });
     }
 
-    // Add user to community (idempotent) and increment membersCount
+    // Add user to community and increment membersCount
     const community = await Community.findByIdAndUpdate(
       id,
       { 
