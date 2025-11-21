@@ -1,22 +1,14 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 class EmailService {
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: process.env.EMAIL_PORT,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    });
+    this.resend = new Resend(process.env.RESEND_API_KEY);
   }
 
   async sendOTP(email, otp, name) {
-    const mailOptions = {
+    const emailData = {
       from: process.env.EMAIL_FROM,
-      to: email,
+      to: [email],
       subject: 'VibeCircle - Verify Your Email',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -57,10 +49,17 @@ class EmailService {
     };
 
     try {
-      await this.transporter.sendMail(mailOptions);
-      console.log('OTP email sent successfully to:', email);
+      const { data, error } = await this.resend.emails.send(emailData);
+      
+      if (error) {
+        console.error('❌ Resend error:', error);
+        throw new Error(`Failed to send email: ${error.message}`);
+      }
+      
+      console.log('✅ OTP email sent successfully to:', email, 'ID:', data.id);
+      return data;
     } catch (error) {
-      console.error('Email send error:', error);
+      console.error('❌ Email send error:', error);
       throw new Error('Failed to send verification email');
     }
   }
