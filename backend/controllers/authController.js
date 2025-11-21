@@ -14,7 +14,13 @@ const generateToken = (userId) => {
 // Send OTP for registration
 exports.sendOTP = async (req, res) => {
   try {
+    console.log('📧 Send OTP request received:', { email: req.body.email, name: req.body.name });
     const { name, email, password, campus } = req.body;
+
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email, and password are required' });
+    }
 
     // Check if user exists
     const existingUser = await User.findOne({ email });
@@ -24,6 +30,7 @@ exports.sendOTP = async (req, res) => {
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log('🔢 Generated OTP for', email, ':', otp);
 
     // Delete any existing OTP for this email
     await OTP.deleteMany({ email });
@@ -34,13 +41,16 @@ exports.sendOTP = async (req, res) => {
       otp,
       userData: { name, email, password, campus }
     });
+    console.log('💾 OTP saved to database');
 
     // Send OTP email
+    console.log('📤 Sending OTP email...');
     await emailService.sendOTP(email, otp, name);
+    console.log('✅ OTP email sent successfully');
 
     res.json({ message: 'OTP sent successfully' });
   } catch (error) {
-    console.error('Send OTP error:', error);
+    console.error('❌ Send OTP error:', error);
     res.status(500).json({ error: 'Failed to send OTP' });
   }
 };
